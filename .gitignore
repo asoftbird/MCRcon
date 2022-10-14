@@ -2,6 +2,8 @@
 main.py
 experimental.py
 
+*.db
+*.db.OLD
 
 
 # VSCworkspace

@@ -1,0 +1,5 @@
+{
+    "dblog": "db.log",
+    "botlog": "output.log",
+    "configdb": "config.db"
+}
