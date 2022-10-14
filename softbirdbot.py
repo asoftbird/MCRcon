@@ -1,3 +1,4 @@
+from atexit import register
 import os
 import json
 import logging
@@ -60,7 +61,7 @@ async def db_insert(data: list, dbname: str):
             If entry already exists. 
     """
     # TODO: error handler decorator
-    sqlstring = f'INSERT INTO {TABLENAME} (guildid, adminroleid, rconip, rconport, rconpw, mcip, mcport, guildname) values(?, ?, ?, ?, ?, ?, ?, ?)'
+    sqlstring = f'INSERT INTO {TABLENAME} (guildid, adminroleid, guildname, rconip, rconport, rconpw, mcip, mcport) values(?, ?, ?, ?, ?, ?, ?, ?)'
     try:
         with closing(sl.connect(dbname)) as db:
             with db:
@@ -199,8 +200,17 @@ async def check_guild_exists(guild_id: str, dbname:str):
     else:
         return False
 
+async def register_guild(guild_id: str, dbname: str):
+    if await check_guild_exists(str(guild_id), dbname) == False:
+        data = [guild_id, "", "", "", "", "", "", ""]
+        await db_insert(data, dbname)
+        return True
+    else:
+        return False
+
+
 async def set_guild_config(guild_id: str, fieldname: str, newvalue, dbname: str):
-    if await check_guild_exists(str(guild_id), CONFIGDB) == True:
+    if await check_guild_exists(str(guild_id), dbname) == True:
         await db_update(fieldname, newvalue, guild_id, dbname)
         return True
     else:
@@ -321,11 +331,20 @@ async def ginf(ctx):
 @bot.command()
 @commands.check_any(commands.is_owner())
 async def greg(ctx):
-    print("greg")
     if await check_guild_exists(str(ctx.guild.id), CONFIGDB) == True:
         await ctx.send(f"Guild {ctx.guild.name} ({ctx.guild.id}) is registered!")
     else:
         await ctx.send(f"Guild {ctx.guild.name} ({ctx.guild.id}) is not registered!")
+
+## Register guild
+@bot.command()
+@commands.check_any(commands.is_owner())
+async def gregadd(ctx):
+    if await register_guild(ctx.guild.id, CONFIGDB) == True:
+        logging.info(f"Added entry for guild {ctx.guild.name} ({ctx.guild.id})!")
+        await ctx.send(f"Added entry for guild {ctx.guild.name} ({ctx.guild.id})!")
+    else:
+        await ctx.send(f"Registry failed: {ctx.guild.name} .already registered.")
 
 ## Change an entry for current guild
 @bot.command()
