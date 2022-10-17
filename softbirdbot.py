@@ -35,7 +35,7 @@ bot = commands.Bot(command_prefix=';;', intents=intents)
 ####################
 # Database helpers #
 ####################
-
+# TODO: split off to db utils module
 TABLENAME = "CONFIG"
 
 async def db_insert(data: list, dbname: str):
@@ -179,7 +179,7 @@ async def db_update(field: str, newval, guild_id: int, dbname: str):
 #####################
 # Utility functions #
 #####################
-
+# TODO: split off to util module
 async def get_guild_config(guild_id: str, dbname: str):
     result = await db_rowquery(guild_id, dbname)
     return result
@@ -257,6 +257,8 @@ async def on_command_error(ctx, error):
 ############
 # Commands #
 ############
+
+# TODO: start using cogs
 
 # Server management
 ## Send command to server
