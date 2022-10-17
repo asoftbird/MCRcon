@@ -26,12 +26,6 @@ logging.basicConfig(filename=BOTLOGFILE,
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
-RCONAUTH = os.getenv('RCON_AUTH')
-RCONIP = str(os.getenv('RCON_IP'))
-RCONPORT = int(os.getenv('RCON_PORT'))
-MCPORT = int(os.getenv('MC_PORT'))
-ADMINROLE = int(os.getenv('ADMINROLE_ID'))
-
 intents = discord.Intents(messages=True, guilds=True, members=True)
 intents.message_content = True
 intents.members = True
@@ -283,28 +277,29 @@ async def cmd(ctx, *args):
 async def whitelist(ctx, operation, *args):
     if await check_user_command_permissions(ctx.author, ctx.guild.id) == True:
         argument = ' '.join(args)
-        if operation == "add":
-            arguments = "whitelist add " + argument
-        elif operation == "del" or operation == "remove":
-            arguments = "whitelist remove " + argument
-        elif operation == "list":
-            arguments = "whitelist list"
-        elif operation == "reload":
-            arguments = "whitelist reload"
-        elif operation == "multiadd":
+
+        if operation == "multiadd" or operation == "add":
             if len(args) < 11:
                 for i in args:
                     response = await rcon_command(f"whitelist add {i}", ctx.guild.id)
                     await ctx.send(f'{response[0]}')
             else:
                 raise commands.TooManyArguments
-        elif operation == "multidel":
+
+        elif operation == "multidel" or operation == "del" or operation == "remove":
             if len(args) < 11:
                 for i in args:
                     response = await rcon_command(f"whitelist remove {i}", ctx.guild.id)
                     await ctx.send(f'{response[0]}')
             else:
                 raise commands.TooManyArguments
+
+        elif operation == "reload":
+            arguments = "whitelist reload"
+
+        elif operation == "list":
+            arguments = "whitelist list"
+
         else:
             raise commands.MissingRequiredArgument
         response = await rcon_command(arguments, ctx.guild.id)
@@ -316,22 +311,25 @@ async def whitelist(ctx, operation, *args):
 # Server info
 ## Get player list from server
 @bot.command()
-@commands.check_any(commands.is_owner(), commands.has_role(ADMINROLE))
+@commands.check_any(commands.is_owner())
 async def status(ctx):
     guildcfg = await get_guild_config(ctx.guild.id, CONFIGDB)
     server = JavaServer(guildcfg['mcip'], int(guildcfg['mcport']))
     query = server.query()
-
-    if guildcfg['guildname'] != 'gtnhserver': 
-        tps = await rcon_command("forge tps overworld", ctx.guild.id)
-        day = await rcon_command("time query day", ctx.guild.id)
-        time = await rcon_command("time query daytime", ctx.guild.id)
-        tps = tps[0][46:-1]
-        day = day[0][12:-1]
-        time = time[0][12:-1]
-        await ctx.send(f"Players: {', '.join(query.players.names)} ({query.players.online}/{query.players.max})\nTPS: {tps}\nTime: day {day}, {time}s")
+    if await check_user_command_permissions(ctx.author, ctx.guild.id) == True:
+        #TODO: add configuration options per server / MC version
+        if guildcfg['guildname'] != 'gtnhserver': 
+            tps = await rcon_command("forge tps overworld", ctx.guild.id)
+            day = await rcon_command("time query day", ctx.guild.id)
+            time = await rcon_command("time query daytime", ctx.guild.id)
+            tps = tps[0][46:-1]
+            day = day[0][12:-1]
+            time = time[0][12:-1]
+            await ctx.send(f"Players: {', '.join(query.players.names)} ({query.players.online}/{query.players.max})\nTPS: {tps}\nTime: day {day}, {time}s")
+        else:
+            await ctx.send(f"Players: {', '.join(query.players.names)} ({query.players.online}/{query.players.max})")
     else:
-        await ctx.send(f"Players: {', '.join(query.players.names)} ({query.players.online}/{query.players.max})")
+        await ctx.send('Insufficient permissions.')
 
 # bot config
 ## Get full current guild db info
