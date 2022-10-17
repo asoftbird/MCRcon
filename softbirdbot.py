@@ -230,12 +230,18 @@ async def rcon_command(command, guild_id: str):
     await RCONclient.close()
     return RCONresponse
 
-async def check_user_command_permissions(author, guild_id: str):
-    guildcfg = await get_guild_config(guild_id, CONFIGDB)
-    roleids = [str(x.id) for x in author.roles]
-    if guildcfg['adminroleid'] in roleids:
+async def check_user_command_permissions(author, guild_id: str, level: str):
+    if level == "admin":
+        # this command is admin only, check roles
+        guildcfg = await get_guild_config(guild_id, CONFIGDB)
+        roleids = [str(x.id) for x in author.roles]
+        if guildcfg['adminroleid'] in roleids:
+            return True
+    elif level == "everyone":
+        # everyone can use this, bypass check
         return True
-
+    else:
+        return False
 
 
 #events
@@ -265,7 +271,7 @@ async def on_command_error(ctx, error):
 @bot.command(aliases=['command'])
 #@commands.check_any(commands.is_owner()) #commands.has_role(ADMINROLE)
 async def cmd(ctx, *args):
-    if await check_user_command_permissions(ctx.author, ctx.guild.id) == True:
+    if await check_user_command_permissions(ctx.author, ctx.guild.id, "admin") == True:
         arguments = ' '.join(args)
         response = await rcon_command(arguments, ctx.guild.id)
         await ctx.send(f'Sent command: "{arguments}" to server.')
@@ -277,7 +283,7 @@ async def cmd(ctx, *args):
 @bot.command(aliases=['wl'])
 # @commands.check_any(commands.is_owner(), commands.has_role(ADMINROLE))
 async def whitelist(ctx, operation, *args):
-    if await check_user_command_permissions(ctx.author, ctx.guild.id) == True:
+    if await check_user_command_permissions(ctx.author, ctx.guild.id, "admin") == True:
         argument = ' '.join(args)
 
         if operation == "multiadd" or operation == "add":
@@ -313,12 +319,12 @@ async def whitelist(ctx, operation, *args):
 # Server info
 ## Get player list from server
 @bot.command()
-@commands.check_any(commands.is_owner())
+# @commands.check_any(commands.is_owner())
 async def status(ctx):
     guildcfg = await get_guild_config(ctx.guild.id, CONFIGDB)
     server = JavaServer(guildcfg['mcip'], int(guildcfg['mcport']))
     query = server.query()
-    if await check_user_command_permissions(ctx.author, ctx.guild.id) == True:
+    if await check_user_command_permissions(ctx.author, ctx.guild.id, "everyone") == True:
         #TODO: add configuration options per server / MC version
         if guildcfg['guildname'] != 'gtnhserver': 
             tps = await rcon_command("forge tps overworld", ctx.guild.id)
@@ -392,7 +398,7 @@ async def gget(ctx, fieldname):
 @bot.command(aliases=['userinfo'])
 @commands.check_any(commands.is_owner())
 async def uinf(ctx, *args):
-    if await check_user_command_permissions(ctx.author, ctx.guild.id) == True:
+    if await check_user_command_permissions(ctx.author, ctx.guild.id, "admin") == True:
         guild = ctx.guild
         username = ' '.join(args)
         user_object = await get_user_object(guild, username)
