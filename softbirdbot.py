@@ -17,8 +17,6 @@ with open("config.json") as cfgfile:
 BOTLOGFILE=CFG["botlog"]
 CONFIGDB=CFG["configdb"]
 
-
-
 logging.basicConfig(filename=BOTLOGFILE, 
     encoding='utf-8', 
     level=logging.INFO, 
@@ -34,8 +32,9 @@ RCONPORT = int(os.getenv('RCON_PORT'))
 MCPORT = int(os.getenv('MC_PORT'))
 ADMINROLE = int(os.getenv('ADMINROLE_ID'))
 
-intents = discord.Intents.default()
+intents = discord.Intents(messages=True, guilds=True, members=True)
 intents.message_content = True
+intents.members = True
 
 bot = commands.Bot(command_prefix=';;', intents=intents)
 
@@ -60,7 +59,6 @@ async def db_insert(data: list, dbname: str):
         sl.IntegrityError
             If entry already exists. 
     """
-    # TODO: error handler decorator
     sqlstring = f'INSERT INTO {TABLENAME} (guildid, adminroleid, guildname, rconip, rconport, rconpw, mcip, mcport) values(?, ?, ?, ?, ?, ?, ?, ?)'
     try:
         with closing(sl.connect(dbname)) as db:
@@ -126,7 +124,6 @@ async def db_query(field: str, entry: str, operator: str, value, dbname: str):
         list
             List of matching entry values.
     """
-    # TODO: error handler decorator
     sqlstring = f'SELECT {field} FROM {TABLENAME} WHERE {entry} {operator} {value}'
     with closing(sl.connect(dbname)) as db:
         with db:
@@ -186,7 +183,7 @@ async def db_update(field: str, newval, guild_id: int, dbname: str):
                 db.commit()
 
 #####################
-# Bot configuration #
+# Utility functions #
 #####################
 
 async def get_guild_config(guild_id: str, dbname: str):
@@ -208,7 +205,6 @@ async def register_guild(guild_id: str, dbname: str):
     else:
         return False
 
-
 async def set_guild_config(guild_id: str, fieldname: str, newvalue, dbname: str):
     if await check_guild_exists(str(guild_id), dbname) == True:
         await db_update(fieldname, newvalue, guild_id, dbname)
@@ -216,20 +212,35 @@ async def set_guild_config(guild_id: str, fieldname: str, newvalue, dbname: str)
     else:
         return False
 
-
-
-####################
-# MC Server access #
-####################
+async def get_user_object(guild: discord.Guild, username):
+    if username.isnumeric(): 
+        # ID given
+        user = guild.get_member(int(username))
+        return user
+    elif username.isalpha():
+        # name given
+        user = guild.get_member_named(username)
+        return user
+    else:
+        user = guild.get_member_named(username)
+        if user is not None:
+            return user
+        else:
+            return None
 
 async def rcon_command(command, guild_id: str):
     guildcfg = await get_guild_config(guild_id, CONFIGDB)
-    RCONclient = Client(guildcfg['rconip'], guildcfg['rconport'], guildcfg['rconpw'])
+    RCONclient = Client(guildcfg['rconip'], int(guildcfg['rconport']), guildcfg['rconpw'])
     await RCONclient.connect()
     RCONresponse = await RCONclient.send_cmd(command)
     await RCONclient.close()
     return RCONresponse
 
+async def check_user_command_permissions(author, guild_id: str):
+    guildcfg = await get_guild_config(guild_id, CONFIGDB)
+    roleids = [str(x.id) for x in author.roles]
+    if guildcfg['adminroleid'] in roleids:
+        return True
 
 
 
@@ -255,51 +266,52 @@ async def on_command_error(ctx, error):
 
 # Server management
 ## Send command to server
-@bot.command()
-@commands.check_any(commands.is_owner()) #commands.has_role(ADMINROLE)
+@bot.command(aliases=['command'])
+#@commands.check_any(commands.is_owner()) #commands.has_role(ADMINROLE)
 async def cmd(ctx, *args):
-    guildcfg = await get_guild_config(ctx.guild.id, CONFIGDB)
-    author_roles = ctx.author.roles
-    if guildcfg['adminroleid'] in author_roles:
+    if await check_user_command_permissions(ctx.author, ctx.guild.id) == True:
         arguments = ' '.join(args)
         response = await rcon_command(arguments, ctx.guild.id)
         await ctx.send(f'Sent command: "{arguments}" to server.')
-        await ctx.send(f'Server response: {response}')
+        await ctx.send(f'Server response: {response[0]}')
     else:
-        await ctx.send(f'Insufficient permissions.')
+        await ctx.send('Insufficient permissions.')
 
 ## Whitelisting! 
 @bot.command(aliases=['wl'])
-@commands.check_any(commands.is_owner(), commands.has_role(ADMINROLE))
+# @commands.check_any(commands.is_owner(), commands.has_role(ADMINROLE))
 async def whitelist(ctx, operation, *args):
-    argument = ' '.join(args)
-    if operation == "add":
-        arguments = "whitelist add " + argument
-    elif operation == "del" or operation == "remove":
-        arguments = "whitelist remove " + argument
-    elif operation == "list":
-        arguments = "whitelist list"
-    elif operation == "reload":
-        arguments = "whitelist reload"
-    elif operation == "multiadd":
-        if len(args) < 11:
-            for i in args:
-                response = await rcon_command(f"whitelist add {i}", ctx.guild.id)
-                await ctx.send(f'{response}')
+    if await check_user_command_permissions(ctx.author, ctx.guild.id) == True:
+        argument = ' '.join(args)
+        if operation == "add":
+            arguments = "whitelist add " + argument
+        elif operation == "del" or operation == "remove":
+            arguments = "whitelist remove " + argument
+        elif operation == "list":
+            arguments = "whitelist list"
+        elif operation == "reload":
+            arguments = "whitelist reload"
+        elif operation == "multiadd":
+            if len(args) < 11:
+                for i in args:
+                    response = await rcon_command(f"whitelist add {i}", ctx.guild.id)
+                    await ctx.send(f'{response[0]}')
+            else:
+                raise commands.TooManyArguments
+        elif operation == "multidel":
+            if len(args) < 11:
+                for i in args:
+                    response = await rcon_command(f"whitelist remove {i}", ctx.guild.id)
+                    await ctx.send(f'{response[0]}')
+            else:
+                raise commands.TooManyArguments
         else:
-            raise commands.TooManyArguments
-    elif operation == "multidel":
-        if len(args) < 11:
-            for i in args:
-                response = await rcon_command(f"whitelist remove {i}", ctx.guild.id)
-                await ctx.send(f'{response}')
-        else:
-            raise commands.TooManyArguments
+            raise commands.MissingRequiredArgument
+        response = await rcon_command(arguments, ctx.guild.id)
+        await ctx.send(f'Sent command: "{arguments}" to server.')
+        await ctx.send(f'Server response: {response[0]}')
     else:
-        raise commands.MissingRequiredArgument
-    response = await rcon_command(arguments, ctx.guild.id)
-    await ctx.send(f'Sent command: "{arguments}" to server.')
-    await ctx.send(f'Server response: {response}')
+        await ctx.send('Insufficient permissions.')
 
 # Server info
 ## Get player list from server
@@ -307,28 +319,30 @@ async def whitelist(ctx, operation, *args):
 @commands.check_any(commands.is_owner(), commands.has_role(ADMINROLE))
 async def status(ctx):
     guildcfg = await get_guild_config(ctx.guild.id, CONFIGDB)
-    server = JavaServer(guildcfg['mcip'],guildcfg['mcport'])
+    server = JavaServer(guildcfg['mcip'], int(guildcfg['mcport']))
     query = server.query()
-    tps = await rcon_command("forge tps overworld", ctx.guild.id)
-    day = await rcon_command("time query day", ctx.guild.id)
-    time = await rcon_command("time query daytime", ctx.guild.id)
-    tps = tps[0][46:-1]
-    day = day[0][12:-1]
-    time = time[0][12:-1]
-    await ctx.send(f"Players: {', '.join(query.players.names)} ({query.players.online}/{query.players.max})\nTPS: {tps}\nTime: day {day}, {time}s")
 
-
+    if guildcfg['guildname'] != 'gtnhserver': 
+        tps = await rcon_command("forge tps overworld", ctx.guild.id)
+        day = await rcon_command("time query day", ctx.guild.id)
+        time = await rcon_command("time query daytime", ctx.guild.id)
+        tps = tps[0][46:-1]
+        day = day[0][12:-1]
+        time = time[0][12:-1]
+        await ctx.send(f"Players: {', '.join(query.players.names)} ({query.players.online}/{query.players.max})\nTPS: {tps}\nTime: day {day}, {time}s")
+    else:
+        await ctx.send(f"Players: {', '.join(query.players.names)} ({query.players.online}/{query.players.max})")
 
 # bot config
 ## Get full current guild db info
-@bot.command()
+@bot.command(aliases=['guildinfo'])
 @commands.check_any(commands.is_owner())
 async def ginf(ctx):
     guildcfg = await get_guild_config(str(ctx.guild.id), CONFIGDB)
     await ctx.send(guildcfg)
 
 ## Check if entry for current guild exists
-@bot.command()
+@bot.command(aliases=['guildregistry'])
 @commands.check_any(commands.is_owner())
 async def greg(ctx):
     if await check_guild_exists(str(ctx.guild.id), CONFIGDB) == True:
@@ -337,7 +351,7 @@ async def greg(ctx):
         await ctx.send(f"Guild {ctx.guild.name} ({ctx.guild.id}) is not registered!")
 
 ## Register guild
-@bot.command()
+@bot.command(aliases=['guildregistryadd'])
 @commands.check_any(commands.is_owner())
 async def gregadd(ctx):
     if await register_guild(ctx.guild.id, CONFIGDB) == True:
@@ -347,7 +361,7 @@ async def gregadd(ctx):
         await ctx.send(f"Registry failed: {ctx.guild.name} .already registered.")
 
 ## Change an entry for current guild
-@bot.command()
+@bot.command(aliases=['guildset'])
 @commands.check_any(commands.is_owner())
 async def gset(ctx, fieldname, value):
     fieldnamelist = await db_getfieldnames(CONFIGDB)
@@ -363,7 +377,7 @@ async def gset(ctx, fieldname, value):
             await ctx.send(f"Cannot change guildid!")
 
 ## Get the value of a single entry for current guild
-@bot.command()
+@bot.command(aliases=['guildget'])
 @commands.check_any(commands.is_owner())
 async def gget(ctx, fieldname):
     fieldnamelist = await db_getfieldnames(CONFIGDB)
@@ -374,5 +388,24 @@ async def gget(ctx, fieldname):
     else:
        await ctx.send(f"Field not found!") 
 
+## Request info on a user (provides username, nickname ID, list of roles + role IDs)
+@bot.command(aliases=['userinfo'])
+@commands.check_any(commands.is_owner())
+async def uinf(ctx, *args):
+    if await check_user_command_permissions(ctx.author, ctx.guild.id) == True:
+        guild = ctx.guild
+        username = ' '.join(args)
+        user_object = await get_user_object(guild, username)
+        if user_object is not None:
+            rolenames = [str(x.name) for x in user_object.roles]
+            roleIDs = [str(x.id) for x in user_object.roles]
+            roles = dict(zip(rolenames, roleIDs))
+            roles.pop("@everyone")
+            await ctx.send(f"User: {user_object}, ID: {user_object.id}, name: {user_object.name}")
+            await ctx.send(f"Roles: {roles}")
+        else:
+            await ctx.send(f"User not found!") 
+    else:
+        await ctx.send('Insufficient permissions.')
 
 bot.run(TOKEN)
