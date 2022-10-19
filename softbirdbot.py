@@ -1,4 +1,4 @@
-from atexit import register
+from math import trunc
 import os
 import json
 import logging
@@ -10,7 +10,7 @@ from discord.ext import commands
 from mcstatus import JavaServer
 from dotenv import load_dotenv
 
-# config
+# init
 with open("config.json") as cfgfile:
     CFG = json.load(cfgfile)
 
@@ -26,16 +26,20 @@ logging.basicConfig(filename=BOTLOGFILE,
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
+
+#TODO: figure out what intents are necessary
 intents = discord.Intents(messages=True, guilds=True, members=True)
 intents.message_content = True
 intents.members = True
 
+#TODO: configurable prefix per-server
 bot = commands.Bot(command_prefix=';;', intents=intents)
 
 ####################
 # Database helpers #
 ####################
 # TODO: split off to db utils module
+# TODO: make sure users can't perform SQL injects
 TABLENAME = "CONFIG"
 
 async def db_insert(data: list, dbname: str):
@@ -176,10 +180,18 @@ async def db_update(field: str, newval, guild_id: int, dbname: str):
                 cursor.execute(sqlstring, (newval, guild_id,))
                 db.commit()
 
+async def convert_time(timeTicks: int):
+    time = (timeTicks/1000)+6 % 24
+    hours = trunc(time)
+    minutes = str(trunc((time - hours)*60)).zfill(2)
+    hours = str(hours).zfill(2)
+    return hours, minutes
+
 #####################
 # Utility functions #
 #####################
 # TODO: split off to util module
+# TODO: documentation
 async def get_guild_config(guild_id: str, dbname: str):
     result = await db_rowquery(guild_id, dbname)
     return result
@@ -231,6 +243,7 @@ async def rcon_command(command, guild_id: str):
     return RCONresponse
 
 async def check_user_command_permissions(author, guild_id: str, level: str):
+    # TODO: add multiple / configurable permission levels for commands
     if level == "admin":
         # this command is admin only, check roles
         guildcfg = await get_guild_config(guild_id, CONFIGDB)
@@ -242,7 +255,6 @@ async def check_user_command_permissions(author, guild_id: str, level: str):
         return True
     else:
         return False
-
 
 #events
 @bot.event
@@ -264,12 +276,11 @@ async def on_command_error(ctx, error):
 # Commands #
 ############
 
-# TODO: start using cogs
+# TODO: start using cogs to separate out command modules
 
 # Server management
 ## Send command to server
 @bot.command(aliases=['command'])
-#@commands.check_any(commands.is_owner()) #commands.has_role(ADMINROLE)
 async def cmd(ctx, *args):
     if await check_user_command_permissions(ctx.author, ctx.guild.id, "admin") == True:
         arguments = ' '.join(args)
@@ -281,7 +292,6 @@ async def cmd(ctx, *args):
 
 ## Whitelisting! 
 @bot.command(aliases=['wl'])
-# @commands.check_any(commands.is_owner(), commands.has_role(ADMINROLE))
 async def whitelist(ctx, operation, *args):
     if await check_user_command_permissions(ctx.author, ctx.guild.id, "admin") == True:
         argument = ' '.join(args)
@@ -319,27 +329,43 @@ async def whitelist(ctx, operation, *args):
 # Server info
 ## Get player list from server
 @bot.command()
-# @commands.check_any(commands.is_owner())
 async def status(ctx):
     guildcfg = await get_guild_config(ctx.guild.id, CONFIGDB)
     server = JavaServer(guildcfg['mcip'], int(guildcfg['mcport']))
     query = server.query()
     if await check_user_command_permissions(ctx.author, ctx.guild.id, "everyone") == True:
-        #TODO: add configuration options per server / MC version
+        #TODO: add configuration options based on MC version / config file 
         if guildcfg['guildname'] != 'gtnhserver': 
+            # FIXME: quick hack to ensure it runs on private server
             tps = await rcon_command("forge tps overworld", ctx.guild.id)
             day = await rcon_command("time query day", ctx.guild.id)
             time = await rcon_command("time query daytime", ctx.guild.id)
             tps = tps[0][46:-1]
             day = day[0][12:-1]
             time = time[0][12:-1]
-            await ctx.send(f"Players: {', '.join(query.players.names)} ({query.players.online}/{query.players.max})\nTPS: {tps}\nTime: day {day}, {time}s")
+            time = int(time)
+            time_hours, time_minutes = await convert_time(time)
+            if time >= 23000 or time < 1000:
+                timeWord = f"{time_hours}:{time_minutes} (sunrise)"
+            elif time >= 1000 and time < 6000:
+                timeWord = f"{time_hours}:{time_minutes} (morning)"
+            elif time >= 6000 and time < 12000:
+                timeWord = f"{time_hours}:{time_minutes} (afternoon)"
+            elif time >= 12000 and time < 13000:
+                timeWord = f"{time_hours}:{time_minutes} (sunset)"
+            elif time >= 13000 and time < 18000:
+                timeWord = f"{time_hours}:{time_minutes} (night)"
+            elif time >= 18000 and time < 23000:
+                timeWord = f"{time_hours}:{time_minutes} (late night)"
+
+            await ctx.send(f"Players: {', '.join(query.players.names)} ({query.players.online}/{query.players.max})\nTPS: {tps}\nTime: day {day}, {timeWord}")
         else:
             await ctx.send(f"Players: {', '.join(query.players.names)} ({query.players.online}/{query.players.max})")
     else:
         await ctx.send('Insufficient permissions.')
 
 # bot config
+# TODO: make server admins able to use these command
 ## Get full current guild db info
 @bot.command(aliases=['guildinfo'])
 @commands.check_any(commands.is_owner())
