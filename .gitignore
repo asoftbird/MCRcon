@@ -1,6 +1,7 @@
 # experiments
 main.py
 experimental.py
+dbhelper.py
 
 *.db
 *.db.OLD
