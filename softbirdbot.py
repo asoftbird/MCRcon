@@ -17,11 +17,15 @@ with open("config.json") as cfgfile:
 BOTLOGFILE=CFG["botlog"]
 CONFIGDB=CFG["configdb"]
 
-logging.basicConfig(filename=BOTLOGFILE, 
+logging.basicConfig( 
     encoding='utf-8', 
     level=logging.INFO, 
-    format='%(asctime)s %(message)s',
-    datefmt='[%a %d-%m-%y %H:%M:%S]'
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='[%a %d-%m-%y %H:%M:%S]',
+    handlers=[
+        logging.FileHandler(BOTLOGFILE),
+        logging.StreamHandler()
+    ]
     )
 
 load_dotenv()
@@ -260,6 +264,14 @@ async def check_user_command_permissions(author, guild_id: str, level: str):
 @bot.event
 async def on_ready():
     print(f'bot ready!')
+
+@bot.event
+async def on_command(ctx):
+    logging.info(f"User {ctx.author.name} ({ctx.author.id}) from guild {ctx.guild.name} ({ctx.guild.id}) used command \"{ctx.message.content}\"")
+
+@bot.event
+async def on_command_completion(ctx):
+    logging.info(f"Command \"{ctx.message.content}\" by {ctx.author.name} ({ctx.author.id}) in {ctx.guild.name} ({ctx.guild.id}) completed.")
 
 @bot.event
 async def on_command_error(ctx, error):
