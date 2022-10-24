@@ -68,8 +68,7 @@ async def db_insert(data: list, dbname: str):
                 db.executemany(sqlstring, (data,))
                 db.commit()
     except sl.IntegrityError as e:
-        logging.warning(f"{e}")
-        print("IntegrityError; skipped insert")
+        logging.warning(f"IntegrityError; skipped insert: {e}")
 
 async def db_getfieldnames(dbname: str):
     sqlstring = f'SELECT * FROM {TABLENAME}'
@@ -263,7 +262,7 @@ async def check_user_command_permissions(author, guild_id: str, level: str):
 #events
 @bot.event
 async def on_ready():
-    print(f'bot ready!')
+    logging.info(f"bot ready!")
 
 @bot.event
 async def on_command(ctx):
