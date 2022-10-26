@@ -28,6 +28,9 @@ logging.basicConfig(
     ]
     )
 
+# disable gateway / session id / shard info logging
+logging.getLogger("discord.gateway").setLevel(logging.WARNING)
+
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 
