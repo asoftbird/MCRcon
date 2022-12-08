@@ -292,6 +292,27 @@ async def on_command_error(ctx, error):
 
 # TODO: start using cogs to separate out command modules
 
+## just a fun lil utility command
+@bot.command()
+async def sprote(ctx):
+    if await check_user_command_permissions(ctx.author, ctx.guild.id, "everyone") == True:
+        await ctx.send('https://pnut.titmou.se/api/public/dl/1A6MdmBc?inline=true')  
+
+@bot.command()
+async def info(ctx):
+    guildcfg = await get_guild_config(ctx.guild.id, CONFIGDB)
+    if guildcfg['guildname'] == 'sprotecraft':
+        permcheck = await check_user_command_permissions(ctx.author, ctx.guild.id, "admin")
+        if permcheck == True:
+            await ctx.send("Server management info: https://titmou.se:8080/share/s0fkiIFTw95k")
+        elif permcheck == False:
+            await ctx.send(f"Use ;;status for a list of players.")
+        else:
+            await ctx.send('Insufficient permissions.')
+
+    else:
+        await ctx.send(f"Use ;;status for a list of players.")
+
 # Server management
 ## Send command to server
 @bot.command(aliases=['command'])
